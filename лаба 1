@@ -1,0 +1,56 @@
+def calculate_delivery_cost(order, customer, address):
+    if not order:
+        return {"success": False, "cost": 0.0, "message": "Заказ не существует"}
+        
+    if not address or not address.get("text"):
+        return {"success": False, "cost": 0.0, "message": "Адрес доставки должен быть указан"}
+        
+    weight = order.get("weight")
+    if weight is None or weight <= 0:
+        return {"success": False, "cost": 0.0, "message": "Вес заказа должен быть положительным числом"}
+
+    if weight > 50:
+        return {"success": False, "cost": 0.0, "message": "Превышен максимальный вес для доставки (50 кг)"}
+        
+    total_price = order.get("total_price", 0)
+    if total_price < 1000:
+        return {"success": False, "cost": 0.0, "message": "Минимальная стоимость заказа для доставки — 1000 рублей"}
+
+    delivery_type = order.get("delivery_type")
+    is_vip = customer.get("is_vip", False) if customer else False
+    is_new = customer.get("is_new", False) if customer else False
+    is_remote = address.get("is_remote", False)
+    
+    if delivery_type == "pickup":
+        base_cost = 0.0
+    elif delivery_type == "courier":
+        if weight <= 5:
+            base_cost = 300.0
+        elif weight <= 10:
+            base_cost = 500.0
+        else:
+            base_cost = 500.0 + (weight - 10) * 50.0
+    elif delivery_type == "regional":
+        base_cost = 1000.0 + weight * 100.0
+    else:
+        return {"success": False, "cost": 0.0, "message": "Неизвестный тип доставки"}
+
+    if is_vip and total_price >= 5000:
+        return {"success": True, "cost": 0.0, "message": "Расчет стоимости доставки успешно выполнен"}
+        
+    if total_price >= 10000 and not is_remote:
+        return {"success": True, "cost": 0.0, "message": "Расчет стоимости доставки успешно выполнен"}
+
+    final_cost = base_cost
+    
+    if is_remote:
+        final_cost *= 1.2  
+        
+    if is_new:
+        final_cost *= 0.85  
+
+    return {
+        "success": True,
+        "cost": round(final_cost, 2),
+        "message": "Расчет стоимости доставки успешно выполнен"
+    }
