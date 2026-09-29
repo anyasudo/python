@@ -1,0 +1,105 @@
+def check_brackets(s):
+    stack = []
+    for char in s:
+        if char == '(':
+            stack.append(char)
+        elif char == ')':
+            if not stack:
+                return False
+            stack.pop()
+    return not stack
+
+
+class Parser:
+    def __init__(self, expr):
+        self.expr = expr
+        self.pos = 0
+
+    def parse(self):
+        if self.pos >= len(self.expr):
+            raise ValueError("Пустое выражение")
+        result = self.expression()
+        if self.pos != len(self.expr):
+            raise ValueError(f"Непредвиденный символ: {self.expr[self.pos]}")
+        return result
+
+    def expression(self):
+        result = self.term()
+        while self.pos < len(self.expr) and self.expr[self.pos] in '+-':
+            op = self.expr[self.pos]
+            self.pos += 1
+            right = self.term()
+            if op == '+':
+                result += right
+            else:
+                result -= right
+        return result
+
+    def term(self):
+        result = self.factor()
+        while self.pos < len(self.expr) and self.expr[self.pos] in '*/':
+            op = self.expr[self.pos]
+            self.pos += 1
+            right = self.factor()
+            if op == '*':
+                result *= right
+            else:
+                if right == 0:
+                    raise ZeroDivisionError("Деление на ноль")
+                result /= right
+        return result
+
+    def factor(self):
+        if self.pos < len(self.expr) and self.expr[self.pos] == '(':
+            self.pos += 1
+            result = self.expression()
+            if self.pos >= len(self.expr) or self.expr[self.pos] != ')':
+                raise ValueError("Не закрыта скобка")
+            self.pos += 1
+            return result
+
+        start = self.pos
+        while self.pos < len(self.expr) and (self.expr[self.pos].isdigit() or self.expr[self.pos] == '.'):
+            self.pos += 1
+
+        if start == self.pos:
+            if self.pos < len(self.expr):
+                raise ValueError(f"Ожидалось число, получено: {self.expr[self.pos]}")
+            raise ValueError("Ожидалось число")
+
+        token = self.expr[start:self.pos]
+        try:
+            return float(token)
+        except ValueError:
+            raise ValueError(f"Некорректное число: {token}")
+
+
+def main():
+    s = input("Введите выражение: ").strip()
+
+    if not s.endswith('='):
+        print("Выражение должно заканчиваться '='")
+        return
+
+    expr = "".join(s[:-1].split())
+
+    if not expr:
+        print("Пустое выражение")
+        return
+
+    if not check_brackets(expr):
+        print("Скобки расставлены неверно")
+        return
+
+    try:
+        parser = Parser(expr)
+        result = parser.parse()
+        print(f"Результат: {result}")
+    except ZeroDivisionError as e:
+        print(f"Ошибка: {e}")
+    except Exception as e:
+        print(f"Ошибка: {e}")
+
+
+if __name__ == "__main__":
+    main()
