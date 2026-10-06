@@ -1,0 +1,161 @@
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Callable, Self
+
+import sympy
+
+
+# Абстрактный базовый класс для вычисления интеграла
+class IntegralCalcer(ABC):
+    # Слоты, чтобы нельзя было добавлять новые атрибуты
+    __slots__ = ()
+
+    # Абстрактный метод: обязателен для всех наследников
+    @abstractmethod
+    def calc(
+        self,
+        f: Callable[[float], float] | sympy.Expr | str,
+        a: float,
+        b: float,
+    ) -> float:
+        raise NotImplementedError
+
+    # Проверка, что нижний предел меньше верхнего
+    def _validate_bounds(self, a: float, b: float) -> None:
+        if not a < b:
+            raise ValueError("Нижний предел a должен быть меньше верхнего предела b")
+
+    # Альтернативный конструктор из словаря
+    @classmethod
+    def from_config(cls, config: dict) -> Self:
+        return cls(**config)
+
+    # Строковое представление
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    # Представление для отладки: собирает слоты по MRO
+    def __repr__(self) -> str:
+        attrs: list[str] = []
+        for cls in type(self).__mro__:
+            slots = getattr(cls, "__slots__", ())
+            if isinstance(slots, str):
+                slots = (slots,)
+            for name in slots:
+                if name in ("__weakref__", "__dict__"):
+                    continue
+                if hasattr(self, name):
+                    attrs.append(f"{name}={getattr(self, name)!r}")
+        return f"{type(self).__name__}({', '.join(attrs)})"
+
+
+# Метод средних прямоугольников
+class RectangularCalcer(IntegralCalcer):
+    __slots__ = ("_n",)
+
+    # Проверяет n > 0 и сохраняет _n
+    def __init__(self, n: int) -> None:
+        if n <= 0:
+            raise ValueError("n должно быть больше 0")
+        self._n = n
+
+    # Вычисляет интеграл методом средних прямоугольников
+    def calc(self, f: Callable[[float], float], a: float, b: float) -> float:
+        self._validate_bounds(a, b)
+        h = (b - a) / self._n
+        total = 0.0
+        for i in range(self._n):
+            x = a + (i + 0.5) * h
+            total += f(x)
+        return h * total
+
+
+# Метод Симпсона
+class SimpsonCalcer(IntegralCalcer):
+    __slots__ = ("_n",)
+
+    # Проверяет n > 0 и чётность n
+    def __init__(self, n: int) -> None:
+        if n <= 0:
+            raise ValueError("n должно быть больше 0")
+        if n % 2 != 0:
+            raise ValueError("n должно быть чётным")
+        self._n = n
+
+    # Вычисляет интеграл методом Симпсона
+    def calc(self, f: Callable[[float], float], a: float, b: float) -> float:
+        self._validate_bounds(a, b)
+        h = (b - a) / self._n
+        total = f(a) + f(b)
+        for i in range(1, self._n):
+            x = a + i * h
+            if i % 2 == 0:
+                total += 2 * f(x)
+            else:
+                total += 4 * f(x)
+        return total * h / 3
+
+
+# Аналитическое вычисление через SymPy
+class AnalyticCalcer(IntegralCalcer):
+    __slots__ = ("_symbol",)
+
+    # Сохраняет имя переменной (по умолчанию 'x')
+    def __init__(self, symbol: str = "x") -> None:
+        self._symbol = symbol
+
+    # Вычисляет интеграл аналитически
+    def calc(self, f: sympy.Expr | str, a: float, b: float) -> float:
+        self._validate_bounds(a, b)
+        expr = sympy.sympify(f) if isinstance(f, str) else f
+        var = sympy.Symbol(self._symbol)
+        result = sympy.integrate(expr, (var, a, b))
+        if result.has(sympy.Integral):
+            raise ValueError("Интеграл не берётся аналитически")
+        return float(result)
+
+
+if __name__ == "__main__":
+    # Исходная функция и пределы
+    f_num: Callable[[float], float] = lambda x: x ** 2
+    f_str: str = "x**2"
+    a, b = 0.0, 1.0
+    exact = 1.0 / 3.0
+
+    # Создаём калькуляторы
+    rect = RectangularCalcer(1000)
+    simp = SimpsonCalcer(1000)
+    analytic = AnalyticCalcer()
+    analytic_cfg = AnalyticCalcer.from_config({"symbol": "x"})
+
+    # Вычисляем интеграл тремя способами
+    rect_val = rect.calc(f_num, a, b)
+    simp_val = simp.calc(f_num, a, b)
+    analytic_val = analytic.calc(f_str, a, b)
+
+    # Вывод информации о калькуляторах
+    print("Калькуляторы:")
+    print(rect)
+    print(simp)
+    print(analytic)
+    print("AnalyticCalcer.from_config:", analytic_cfg)
+
+    # Сравнение точности
+    print("\nИнтеграл x^2 от 0 до 1:")
+    print(f"Точное значение: {exact}")
+    print(f"Прямоугольники: {rect_val}, ошибка = {abs(rect_val - exact):.3e}")
+    print(f"Симпсон: {simp_val}, ошибка = {abs(simp_val - exact):.3e}")
+    print(f"Аналитически: {analytic_val}, ошибка = {abs(analytic_val - exact):.3e}")
+
+    # Демонстрация работы __slots__
+    print("\nПроверка __slots__:")
+    try:
+        rect.new_attr = 123
+    except AttributeError as e:
+        print("Не удалось добавить новый атрибут:", e)
+
+    # Демонстрация альтернативного конструктора
+    print("\nАльтернативный конструктор:")
+    rect_from_cfg = RectangularCalcer.from_config({"n": 10})
+    print(rect_from_cfg)
