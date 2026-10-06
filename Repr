@@ -1,0 +1,10 @@
+def __repr__(self) -> str:
+    slots = getattr(type(self), "__slots__", ())
+    if isinstance(slots, str):
+        slots = (slots,)
+    attrs = [
+        f"{name}={getattr(self, name)!r}"
+        for name in slots
+        if hasattr(self, name)
+    ]
+    return f"{type(self).__name__}({', '.join(attrs)})"
