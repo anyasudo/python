@@ -1,0 +1,129 @@
+from abc import ABC, abstractmethod
+
+class Engine(ABC):
+    __slots__ = ()
+
+    @abstractmethod
+    def start(self) -> str:
+        pass
+
+    @abstractmethod
+    def fuel_type(self) -> str:
+        pass
+
+
+class ElectricEngine(Engine):
+    __slots__ = ()
+
+    def start(self) -> str:
+        return "Электродвигатель запущен"
+
+    def fuel_type(self) -> str:
+        return "Электричество"
+
+
+class DieselEngine(Engine):
+    __slots__ = ()
+
+    def start(self) -> str:
+        return "Дизельный двигатель запущен"
+
+    def fuel_type(self) -> str:
+        return "Дизель"
+
+
+class HybridEngine(Engine):
+    __slots__ = ()
+
+    def start(self) -> str:
+        return "Гибридный двигатель запущен"
+
+    def fuel_type(self) -> str:
+        return "Электричество/Бензин"
+
+
+class Vehicle(ABC):
+    __slots__ = ('_engine',)
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    @abstractmethod
+    def describe(self) -> str:
+        pass
+
+    def replace_engine(self, new_engine: Engine) -> None:
+        self._engine = new_engine
+
+
+class GroundVehicle(Vehicle):
+    __slots__ = ()
+
+
+class WaterVehicle(Vehicle):
+    __slots__ = ()
+
+
+class AirVehicle(Vehicle):
+    __slots__ = ()
+
+
+class Car(GroundVehicle):
+    __slots__ = ()
+
+    def __init__(self, engine: Engine | None = None) -> None:
+        super().__init__(engine if engine else DieselEngine())
+
+    def describe(self) -> str:
+        return f"Машина. Тип: {self._engine.fuel_type()} -> {self._engine.start()}"
+
+
+class Ship(WaterVehicle):
+    __slots__ = ()
+
+    def describe(self) -> str:
+        return f"Корабль. Тип: {self._engine.fuel_type()} -> {self._engine.start()}"
+
+
+class Plane(AirVehicle):
+    __slots__ = ()
+
+    def describe(self) -> str:
+        return f"Самолет. Тип: {self._engine.fuel_type()} -> {self._engine.start()}"
+
+
+class Fleet:
+    __slots__ = ('_vehicles',)
+
+    def __init__(self) -> None:
+        self._vehicles: list[Vehicle] = []
+
+    def add(self, vehicle: Vehicle) -> None:
+        self._vehicles.append(vehicle)
+
+    def print_all(self) -> list[str]:
+        return [v.describe() for v in self._vehicles]
+
+
+def main() -> None:
+    car = Car()
+    ship = Ship(ElectricEngine())
+    plane = Plane(HybridEngine())
+
+    fleet = Fleet()
+    fleet.add(car)
+    fleet.add(ship)
+    fleet.add(plane)
+
+    for desc in fleet.print_all():
+        print(desc)
+
+    print("---")
+    
+    car.replace_engine(ElectricEngine())
+    
+    for desc in fleet.print_all():
+        print(desc)
+
+if __name__ == '__main__':
+    main()
