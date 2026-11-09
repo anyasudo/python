@@ -1,0 +1,187 @@
+from typing import TypeVar, Generic, Protocol, Any
+
+# создаем тип для аргументов события
+TEventArgs = TypeVar("TEventArgs")
+
+# интерфейс обработчика
+class EventHandler(Protocol[TEventArgs]):
+    def handle(self, sender: Any, args: TEventArgs) -> None:
+        ...
+
+# класс события (список подписчиков)
+class Event(Generic[TEventArgs]):
+    def __init__(self):
+        self._handlers: list[EventHandler[TEventArgs]] = []
+
+    # подписка через +=
+    def __iadd__(self, handler: EventHandler[TEventArgs]):
+        self._handlers.append(handler)
+        return self
+
+    # отписка через -=
+    def __isub__(self, handler: EventHandler[TEventArgs]):
+        if handler in self._handlers:
+            self._handlers.remove(handler)
+        return self
+
+    # оповещение всех
+    def invoke(self, sender: Any, args: TEventArgs) -> None:
+        for handler in self._handlers:
+            handler.handle(sender, args)
+
+# базовый класс аргументов
+class EventArgs:
+    pass
+
+# аргументы после изменения
+class PropertyChangedEventArgs(EventArgs):
+    def __init__(self, property_name: str):
+        self.property_name = property_name
+
+# аргументы до изменения (с валидацией)
+class PropertyChangingEventArgs(EventArgs):
+    def __init__(self, property_name: str, old_value: Any, new_value: Any):
+        self.property_name = property_name
+        self.old_value = old_value
+        self.new_value = new_value
+        self.can_change = True
+
+# обработчик изменения (вывод в консоль)
+class LoggerHandler:
+    def handle(self, sender: Any, args: PropertyChangedEventArgs) -> None:
+        sender_name = type(sender).__name__
+        print(f"[лог] объект {sender_name} изменил свойство {args.property_name}")
+
+# обработчик попытки изменения (валидатор)
+class ValidatorHandler:
+    def handle(self, sender: Any, args: PropertyChangingEventArgs) -> None:
+        if args.property_name == "age" and args.new_value < 0:
+            print("[ошибка валидации] возраст не может быть отрицательным")
+            args.can_change = False
+            
+        elif args.property_name == "price" and args.new_value <= 0:
+            print("[ошибка валидации] цена должна быть больше нуля")
+            args.can_change = False
+
+# первый класс с 3 полями
+class User:
+    def __init__(self, name: str, age: int, email: str):
+        self.on_changing = Event[PropertyChangingEventArgs]()
+        self.on_changed = Event[PropertyChangedEventArgs]()
+        
+        self._name = name
+        self._age = age
+        self._email = email
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @name.setter
+    def name(self, value: str) -> None:
+        args = PropertyChangingEventArgs("name", self._name, value)
+        self.on_changing.invoke(self, args)
+        if args.can_change:
+            self._name = value
+            self.on_changed.invoke(self, PropertyChangedEventArgs("name"))
+
+    @property
+    def age(self) -> int:
+        return self._age
+
+    @age.setter
+    def age(self, value: int) -> None:
+        args = PropertyChangingEventArgs("age", self._age, value)
+        self.on_changing.invoke(self, args)
+        if args.can_change:
+            self._age = value
+            self.on_changed.invoke(self, PropertyChangedEventArgs("age"))
+
+    @property
+    def email(self) -> str:
+        return self._email
+
+    @email.setter
+    def email(self, value: str) -> None:
+        args = PropertyChangingEventArgs("email", self._email, value)
+        self.on_changing.invoke(self, args)
+        if args.can_change:
+            self._email = value
+            self.on_changed.invoke(self, PropertyChangedEventArgs("email"))
+
+# второй класс с 3 полями
+class Product:
+    def __init__(self, title: str, price: float, quantity: int):
+        self.on_changing = Event[PropertyChangingEventArgs]()
+        self.on_changed = Event[PropertyChangedEventArgs]()
+        
+        self._title = title
+        self._price = price
+        self._quantity = quantity
+
+    @property
+    def title(self) -> str:
+        return self._title
+
+    @title.setter
+    def title(self, value: str) -> None:
+        args = PropertyChangingEventArgs("title", self._title, value)
+        self.on_changing.invoke(self, args)
+        if args.can_change:
+            self._title = value
+            self.on_changed.invoke(self, PropertyChangedEventArgs("title"))
+
+    @property
+    def price(self) -> float:
+        return self._price
+
+    @price.setter
+    def price(self, value: float) -> None:
+        args = PropertyChangingEventArgs("price", self._price, value)
+        self.on_changing.invoke(self, args)
+        if args.can_change:
+            self._price = value
+            self.on_changed.invoke(self, PropertyChangedEventArgs("price"))
+
+    @property
+    def quantity(self) -> int:
+        return self._quantity
+
+    @quantity.setter
+    def quantity(self, value: int) -> None:
+        args = PropertyChangingEventArgs("quantity", self._quantity, value)
+        self.on_changing.invoke(self, args)
+        if args.can_change:
+            self._quantity = value
+            self.on_changed.invoke(self, PropertyChangedEventArgs("quantity"))
+
+# запуск программы
+if __name__ == "__main__":
+    user = User("Анна", 20, "anna@mail.ru")
+    product = Product("Ноутбук", 50000, 10)
+    
+    logger = LoggerHandler()
+    validator = ValidatorHandler()
+    
+    # подписываемся
+    user.on_changing += validator
+    user.on_changed += logger
+    
+    product.on_changing += validator
+    product.on_changed += logger
+    
+    print("--- 1. Успешное изменение ---")
+    user.age = 21 
+    product.price = 55000 
+    
+    print("\n--- 2. Неудачное изменение (валидация не пройдена) ---")
+    user.age = -5 
+    product.price = 0 
+    
+    print(f"Текущий возраст остался: {user.age}")
+    
+    print("\n--- 3. Отписка обработчика ---")
+    user.on_changed -= logger
+    
+    user.name = "Аня" 
+    print(f"Имя изменилось на {user.name}, но логер об этом промолчал")
