@@ -1,0 +1,33 @@
+if __name__ == "__main__":
+    # 1. Подготовка сырых данных
+    rep = Report("Продажи", ["date", "product", "amount"])
+    rep.add_row({"date": "2026-11-01", "product": "Мышь", "amount": 1500})
+    rep.add_row({"date": "2026-11-02", "product": "Коврик", "amount": 500})
+
+    print("=== 1. СОЗДАНИЕ РЕАЛЬНЫХ ФАЙЛОВ (FileSaver) ===")
+    
+    # Создаем CSV-файл (для Excel)
+    pipeline_csv = ReportPipeline(CsvExporter(), FileSaver())
+    pipeline_csv.run(rep, "report.csv")
+    print("Успех: Файл 'report.csv' создан в папке с кодом!")
+
+    # Создаем Markdown-файл (табличка)
+    pipeline_md = ReportPipeline(MarkdownExporter(), FileSaver())
+    pipeline_md.run(rep, "report.md")
+    print("Успех: Файл 'report.md' создан в папке с кодом!")
+
+    # Создаем JSON-файл
+    pipeline_json = ReportPipeline(JsonExporter(), FileSaver())
+    pipeline_json.run(rep, "report.json")
+    print("Успех: Файл 'report.json' создан в папке с кодом!")
+
+    print("\n=== 2. ВЫВОД НА ЭКРАН (ConsoleSaver) ===")
+    pipeline_console = ReportPipeline(MarkdownExporter(), ConsoleSaver())
+    pipeline_console.run(rep, "никуда") # Путь тут игнорируется
+
+    print("\n=== 3. СОХРАНЕНИЕ В ПАМЯТЬ (MemorySaver) ===")
+    mem_saver = MemorySaver()
+    pipeline_memory = ReportPipeline(JsonExporter(), mem_saver)
+    pipeline_memory.run(rep, "data.json")
+    print("Текст успешно спрятан в карман MemorySaver. Вот он:")
+    print(mem_saver.storage["data.json"])
