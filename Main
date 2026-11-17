@@ -1,0 +1,65 @@
+if __name__ == "__main__":
+    # удаляем файлы чтобы каждый запуск теста был чистым
+    if os.path.exists("users.json"): os.remove("users.json")
+    if os.path.exists("session.json"): os.remove("session.json")
+
+    repo = UserRepository("users.json")
+    auth = AuthService(repo)
+
+    print("--- 1. добавление пользователей ---")
+    user1 = User(1, "ярик", "yar", "123")
+    user2 = User(2, "олег", "oleg", "qwerty", "o@mail.ru", "москва")
+    user3 = User(3, "алексей", "alex", "pass777", "alex@mail.ru")
+    
+    repo.add(user1)
+    repo.add(user2)
+    repo.add(user3)
+    print("пользователи сохранены в файл users.json")
+
+    print("\n--- 2. проверка скрытия пароля ---")
+    # пароль есть внутри но его не видно при печати (работает repr=False)
+    print(f"распечатка объекта: {user1}")
+
+    print("\n--- 3. сортировка по имени ---")
+    users = repo.get_all()
+    print("до сортировки:")
+    for u in users: print(f" - {u.name}")
+    
+    users.sort() # срабатывает наш метод __lt__
+    print("после сортировки (по алфавиту):")
+    for u in users: print(f" - {u.name}")
+
+    print("\n--- 4. поиск по логину ---")
+    found = repo.get_by_login("oleg")
+    if found:
+        print(f"найден юзер с логином 'oleg': это {found.name}")
+    
+    not_found = repo.get_by_login("admin")
+    print(f"поиск несуществующего логина 'admin' выдал: {not_found}")
+
+    print("\n--- 5. редактирование свойств (update) ---")
+    user1.address = "калининград"
+    repo.update(user1) # сохраняем изменения в базу
+    updated_user = repo.get_by_id(1)
+    print(f"новый адрес ярика прочитанный из базы: {updated_user.address}")
+
+    print("\n--- 6. удаление (delete) ---")
+    repo.delete(user3)
+    print(f"количество юзеров после удаления алексея: {len(repo.get_all())}")
+
+    print("\n--- 7. авторизация и смена пользователя ---")
+    auth.sign_in(user1)
+    print(f"статус is_authorized: {auth.is_authorized}")
+    print(f"текущий юзер: {auth.current_user.name}")
+    
+    auth.sign_out(user1)
+    print(f"статус после выхода: {auth.is_authorized}")
+    
+    auth.sign_in(user2)
+    print(f"зашел другой юзер: {auth.current_user.name}")
+
+    print("\n--- 8. автоматическая авторизация ---")
+    # создаем новый сервис (имитируем перезапуск программы)
+    new_auth = AuthService(repo)
+    if new_auth.is_authorized:
+        print(f"программа перезапущена. авто-вход сработал для: {new_auth.current_user.name}")
