@@ -1,0 +1,224 @@
+import os
+import json
+from dataclasses import dataclass, field
+from typing import Protocol, TypeVar, Generic, Sequence, Callable, Any
+
+# класс юзера со всеми полями
+@dataclass
+class User:
+    id: int
+    name: str
+    login: str
+    password: str = field(repr=False) # прячем пароль при принте
+    email: str | None = None
+    address: str | None = None
+
+    # сортировка по имени
+    def __lt__(self, other):
+        return self.name < other.name
+
+# перевод юзера в простой словарь для json
+def user_serialize(user: User) -> dict[str, Any]:
+    return {
+        "id": user.id,
+        "name": user.name,
+        "login": user.login,
+        "password": user.password,
+        "email": user.email,
+        "address": user.address
+    }
+
+# сборка юзера обратно из словаря
+def user_deserialize(data: dict[str, Any]) -> User:
+    return User(
+        id=data["id"],
+        name=data["name"],
+        login=data["login"],
+        password=data["password"],
+        email=data.get("email"),
+        address=data.get("address")
+    )
+
+T = TypeVar('T')
+
+# шаблон для любого склада данных
+class IDataRepository(Protocol[T]):
+    def get_all(self) -> Sequence[T]: ...
+    def get_by_id(self, item_id: int) -> T | None: ...
+    def add(self, item: T) -> None: ...
+    def update(self, item: T) -> None: ...
+    def delete(self, item: T) -> None: ...
+
+# шаблон склада именно юзеров
+class IUserRepository(IDataRepository[User], Protocol):
+    def get_by_login(self, login: str) -> User | None: ...
+
+# сам универсальный склад в json
+class DataRepository(Generic[T]):
+    def __init__(self, filename: str, serialize_fn: Callable[[T], dict], deserialize_fn: Callable[[dict], T]):
+        self.filename = filename
+        self.serialize_fn = serialize_fn
+        self.deserialize_fn = deserialize_fn
+        self._data: dict[int, T] = self._load()
+
+    # читаем из файла при запуске
+    def _load(self) -> dict[int, T]:
+        if os.path.exists(self.filename):
+            with open(self.filename, 'r', encoding='utf-8') as f:
+                try:
+                    raw_data = json.load(f)
+                    return {int(k): self.deserialize_fn(v) for k, v in raw_data.items()}
+                except json.JSONDecodeError:
+                    return {}
+        return {}
+
+    # сохраняем в файл любое изменение
+    def _save(self) -> None:
+        raw_data = {str(k): self.serialize_fn(v) for k, v in self._data.items()}
+        with open(self.filename, 'w', encoding='utf-8') as f:
+            json.dump(raw_data, f, ensure_ascii=False, indent=4)
+
+    def get_all(self) -> list[T]:
+        return list(self._data.values())
+
+    def get_by_id(self, item_id: int) -> T | None:
+        return self._data.get(item_id)
+
+    def add(self, item: T) -> None:
+        self._data[item.id] = item
+        self._save()
+
+    def update(self, item: T) -> None:
+        if item.id in self._data:
+            self._data[item.id] = item
+            self._save()
+
+    def delete(self, item: T) -> None:
+        if item.id in self._data:
+            del self._data[item.id]
+            self._save()
+
+# склад конкретно для юзеров
+class UserRepository(DataRepository[User]):
+    def __init__(self, filename: str):
+        super().__init__(filename, serialize_fn=user_serialize, deserialize_fn=user_deserialize)
+
+    # поиск по логину
+    def get_by_login(self, login: str) -> User | None:
+        for user in self.get_all():
+            if user.login == login:
+                return user
+        return None
+
+# шаблон сервиса авторизации
+class IAuthService(Protocol):
+    def sign_in(self, user: User) -> None: ...
+    def sign_out(self, user: User) -> None: ...
+    @property
+    def is_authorized(self) -> bool: ...
+    @property
+    def current_user(self) -> User | None: ...
+
+# класс который пускает юзеров и ведет сессию
+class AuthService:
+    def __init__(self, repo: IUserRepository, session_file: str = "session.json"):
+        self.repo = repo
+        self.session_file = session_file
+        self._current_user: User | None = None
+        self._auto_login()
+
+    # пускает автоматом если есть файл сессии
+    def _auto_login(self) -> None:
+        if os.path.exists(self.session_file):
+            with open(self.session_file, 'r', encoding='utf-8') as f:
+                try:
+                    user_id = json.load(f)
+                    self._current_user = self.repo.get_by_id(int(user_id))
+                except json.JSONDecodeError:
+                    pass
+
+    # обычный вход и запись в сессию
+    def sign_in(self, user: User) -> None:
+        self._current_user = user
+        with open(self.session_file, 'w', encoding='utf-8') as f:
+            json.dump(user.id, f)
+
+    # выход и удаление сессии
+    def sign_out(self, user: User) -> None:
+        if self._current_user and self._current_user.id == user.id:
+            self._current_user = None
+            if os.path.exists(self.session_file):
+                os.remove(self.session_file)
+
+    @property
+    def is_authorized(self) -> bool:
+        return self._current_user is not None
+
+    @property
+    def current_user(self) -> User | None:
+        return self._current_user
+
+if __name__ == "__main__":
+    # удаляем старые файлы для чистого теста
+    if os.path.exists("users.json"): os.remove("users.json")
+    if os.path.exists("session.json"): os.remove("session.json")
+
+    repo = UserRepository("users.json")
+    auth = AuthService(repo)
+
+    print("--- 1. добавление пользователей ---")
+    user1 = User(1, "ярик", "yar", "123")
+    user2 = User(2, "олег", "oleg", "qwerty", "o@mail.ru", "москва")
+    user3 = User(3, "алексей", "alex", "pass777", "alex@mail.ru")
+    
+    repo.add(user1)
+    repo.add(user2)
+    repo.add(user3)
+    print("пользователи сохранены в файл users.json")
+
+    print("\n--- 2. проверка скрытия пароля ---")
+    print(f"распечатка объекта: {user1}")
+
+    print("\n--- 3. сортировка по имени ---")
+    users = repo.get_all()
+    print("до сортировки:")
+    for u in users: print(f" - {u.name}")
+    
+    users.sort() # срабатывает магический метод __lt__
+    print("после сортировки (по алфавиту):")
+    for u in users: print(f" - {u.name}")
+
+    print("\n--- 4. поиск по логину ---")
+    found = repo.get_by_login("oleg")
+    if found:
+        print(f"найден юзер с логином 'oleg': это {found.name}")
+    
+    not_found = repo.get_by_login("admin")
+    print(f"поиск несуществующего логина 'admin' выдал: {not_found}")
+
+    print("\n--- 5. редактирование свойств (update) ---")
+    user1.address = "калининград"
+    repo.update(user1) # сохраняем сразу в базу
+    updated_user = repo.get_by_id(1)
+    print(f"новый адрес ярика прочитанный из базы: {updated_user.address}")
+
+    print("\n--- 6. удаление (delete) ---")
+    repo.delete(user3)
+    print(f"количество юзеров после удаления алексея: {len(repo.get_all())}")
+
+    print("\n--- 7. авторизация и смена пользователя ---")
+    auth.sign_in(user1)
+    print(f"статус is_authorized: {auth.is_authorized}")
+    print(f"текущий юзер: {auth.current_user.name}")
+    
+    auth.sign_out(user1)
+    print(f"статус после выхода: {auth.is_authorized}")
+    
+    auth.sign_in(user2)
+    print(f"зашел другой юзер: {auth.current_user.name}")
+
+    print("\n--- 8. автоматическая авторизация ---")
+    # имитация закрытия и открытия программы
+    new_auth = AuthService(repo)
+    if new_auth.is_authorized:
+        print(f"программа перезапущена. авто-вход сработал для: {new_auth.current_user.name}")
